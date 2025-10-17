@@ -1,4 +1,4 @@
--- Keybind 'T' mit Sequenz + Intelligente Auto-Platzierung
+-- Keybind 'F' mit Sequenz + Intelligente Auto-Platzierung
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
@@ -14,6 +14,10 @@ local MINE_COOLDOWN = 15
 
 local lastBeeHive = 0
 local lastMine = 0
+
+-- Globaler Status für UI
+local ENV = getgenv() or _G
+ENV.__TOOL_SPAM_ACTIVE = false
 
 -- Diese Funktion aktiviert ein Tool einmalig
 local function useAndFinishTool(toolName, waitTime)
@@ -71,6 +75,7 @@ local function startAutoLoop()
 	isLooping = true
 	loopToken = loopToken + 1
 	local myToken = loopToken
+	ENV.__TOOL_SPAM_ACTIVE = true
 	
 	print("🔁 Starte Auto-Platzierung...")
 	
@@ -112,6 +117,7 @@ local function stopLooping()
 	if not isLooping then return end
 	isLooping = false
 	loopToken = loopToken + 1
+	ENV.__TOOL_SPAM_ACTIVE = false
 	print("⏹️ Auto-Platzierung gestoppt")
 	
 	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -124,7 +130,7 @@ end
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 	if gameProcessedEvent then return end
 	
-	if input.KeyCode == Enum.KeyCode.T then
+	if input.KeyCode == Enum.KeyCode.F then
 		
 		-- Wenn bereits am Loopen, stoppe es
 		if isLooping then
@@ -140,7 +146,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 		lastActivation = now
 		isActivating = true
 		
-		print("🔥 Keybind 'T' gedrückt - starte Sequenz...")
+		print("🔥 Keybind 'F' gedrückt - starte Sequenz...")
 		
 		-- Starte die Sequenz
 		task.spawn(function()
@@ -164,8 +170,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 end)
 
 print("══════════════════════════════")
-print("✅ Keybind 'T' Sequenz geladen!")
+print("✅ Keybind 'F' Sequenz geladen!")
 print("🐝 BeeHive (60s) -> 👁️ Sentry (wenn zerstört) -> 💣 Mine (15s)")
 print("🔁 Nach Sequenz: Auto-Platzierung")
-print("⏹️  Nochmal 'T' drücken zum Stoppen")
+print("⏹️  Nochmal 'F' drücken zum Stoppen")
 print("══════════════════════════════")
