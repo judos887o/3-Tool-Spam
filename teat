@@ -1,0 +1,73 @@
+-- Keybind 'F' mit Sequenz (NICHT ZU SCHNELL)
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local COOLDOWN = 1.5 -- 1.5 Sekunden Cooldown
+local lastActivation = 0
+local isActivating = false
+
+-- Diese Funktion aktiviert ein Tool, rüstet es aus und WARTET
+local function useAndFinishTool(toolName, waitTime)
+	local tool = LocalPlayer.Backpack:FindFirstChild(toolName) or 
+	             (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolName))
+	
+	if not tool then
+		warn("❌ Tool nicht gefunden:", toolName)
+		return
+	end
+	
+	-- Ausrüsten
+	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid:EquipTool(tool)
+		task.wait(0.1) -- Warten bis ausgerüstet
+	end
+	
+	-- Aktivieren
+	tool:Activate()
+	print("✅ Tool aktiviert:", toolName)
+	
+	-- Warten, bevor das nächste Tool dran ist
+	task.wait(waitTime)
+end
+
+-- Keybind-Funktion
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+	if gameProcessedEvent then return end
+	
+	-- ✅ HIER GEÄNDERT: von 'T' zu 'F'
+	if input.KeyCode == Enum.KeyCode.F then
+		
+		local now = tick()
+		if now - lastActivation < COOLDOWN or isActivating then
+			return
+		end
+		
+		lastActivation = now
+		isActivating = true
+		
+		print("🔥 Keybind 'F' gedrückt - starte Sequenz...")
+		
+		-- Starte die Sequenz
+		task.spawn(function()
+			useAndFinishTool("BeeHive", 0.4)
+			useAndFinishTool("All Seeing Sentry", 0.4)
+			useAndFinishTool("Subspace Mine", 0.2)
+			
+			-- Unequip am Ende
+			local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid:UnequipTools()
+			end
+			
+			print("✅ Sequenz beendet!")
+			isActivating = false
+		end)
+	end
+end)
+
+print("══════════════════════════════")
+print("✅ Keybind 'F' Sequenz geladen!")
+print("🐝 BeeHive -> 👁️ Sentry -> 💣 Mine")
+print("⏱️  Mit Pausen dazwischen.")
+print("══════════════════════════════")
