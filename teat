@@ -1,177 +1,135 @@
--- Keybind 'F' mit Sequenz + Intelligente Auto-Platzierung
+-- 3-Tool-Spam: SMART - Aktiviert NUR wenn Tool WIRKLICH ready ist
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
-local COOLDOWN = 1.5
-local lastActivation = 0
-local isActivating = false
-local isLooping = false
-local loopToken = 0
+local isActive = false
+local lastUsed = {
+    BeeHive = 0,
+    Sentry = 0,
+    Mine = 0
+}
 
--- Cooldown-Zeiten
-local BEEHIVE_COOLDOWN = 60
-local MINE_COOLDOWN = 15
-
-local lastBeeHive = 0
-local lastMine = 0
-
--- Globaler Status für UI
 local ENV = getgenv() or _G
 ENV.__TOOL_SPAM_ACTIVE = false
 
--- Diese Funktion aktiviert ein Tool einmalig
-local function useAndFinishTool(toolName, waitTime)
-	local tool = LocalPlayer.Backpack:FindFirstChild(toolName) or 
-	             (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolName))
-	
-	if not tool then
-		warn("❌ Tool nicht gefunden:", toolName)
-		return
-	end
-	
-	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid:EquipTool(tool)
-		task.wait(0.1)
-	end
-	
-	tool:Activate()
-	print("✅ Tool aktiviert:", toolName)
-	
-	task.wait(waitTime)
+local function getClickerCtrl()
+    return (getgenv() or _G).__CLICKER_CTRL
 end
 
--- Prüft ob All Seeing Sentry im Workspace existiert
+-- Checkt ob Tool bereit ist (via Cooldown-Property vom Tool)
+local function getToolCooldown(toolName)
+    local tool = LocalPlayer.Backpack:FindFirstChild(toolName)
+    if not tool then return 999 end
+    
+    -- Suche nach Cooldown-Value im Tool
+    local cooldownValue = tool:FindFirstChild("Cooldown") or tool:FindFirstChild("NextUse") or tool:FindFirstChild("Ready")
+    
+    if cooldownValue and cooldownValue:IsA("NumberValue") then
+        return cooldownValue.Value
+    end
+    
+    -- Fallback: Check Enabled
+    if tool.Enabled == false then
+        return 10 -- Geschätzt
+    end
+    
+    return 0 -- Ready
+end
+
+-- Aktiviere Tool EINMAL
+local function activateTool(toolName)
+    local tool = LocalPlayer.Backpack:FindFirstChild(toolName)
+    if not tool then return false end
+    
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return false end
+    
+    humanoid:EquipTool(tool)
+    task.wait(0.2)
+    tool:Activate()
+    task.wait(0.15)
+    humanoid:UnequipTools()
+    
+    lastUsed[toolName:gsub(" ", "")] = tick()
+    print("✅", toolName, "aktiviert! Wartet jetzt auf Cooldown...")
+    return true
+end
+
+-- Checkt ob Sentry existiert
 local function sentryExists()
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj.Name == "All Seeing Sentry" or 
-		   (obj:IsA("Model") and obj.Name:find("Sentry")) or
-		   (obj:IsA("BasePart") and obj.Name:find("Sentry")) then
-			return true
-		end
-	end
-	return false
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:find("Sentry") then
+            return true
+        end
+    end
+    return false
 end
 
--- Platziert ein Tool (ohne Spam)
-local function placeTool(toolName)
-	local tool = LocalPlayer.Backpack:FindFirstChild(toolName) or 
-	             (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolName))
-	
-	if not tool then return end
-	
-	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid:EquipTool(tool)
-		task.wait(0.15)
-		tool:Activate()
-		task.wait(0.1)
-		humanoid:UnequipTools()
-	end
+-- SMART Monitor System
+local function startMonitoring()
+    isActive = true
+    ENV.__TOOL_SPAM_ACTIVE = true
+    
+    local ctrl = getClickerCtrl()
+    if ctrl then ctrl:Pause() end
+    
+    print("🧠 SMART MONITORING GESTARTET")
+    print("Checkt Tools und aktiviert NUR wenn bereit!")
+    
+    task.spawn(function()
+        while isActive do
+            
+            -- BeeHive Check
+            local beeCooldown = getToolCooldown("BeeHive")
+            if beeCooldown == 0 and (tick() - lastUsed.BeeHive) > 5 then
+                print("🐝 BeeHive ist READY!")
+                activateTool("BeeHive")
+            end
+            
+            task.wait(10) -- Warte 10 Sekunden zwischen BeeHive checks
+            
+            -- Mine Check
+            local mineCooldown = getToolCooldown("Subspace Mine")
+            if mineCooldown == 0 and (tick() - lastUsed.Mine) > 3 then
+                print("💣 Mine ist READY!")
+                activateTool("Subspace Mine")
+            end
+            
+            task.wait(5)
+            
+            -- Sentry Check (nur wenn fehlt)
+            if not sentryExists() and (tick() - lastUsed.Sentry) > 2 then
+                print("👁️ Sentry FEHLT - platziere!")
+                activateTool("All Seeing Sentry")
+            end
+            
+            task.wait(5)
+        end
+        
+        ENV.__TOOL_SPAM_ACTIVE = false
+        if ctrl then ctrl:Resume() end
+    end)
 end
 
--- Dauerhaftes Loop-System
-local function startAutoLoop()
-	isLooping = true
-	loopToken = loopToken + 1
-	local myToken = loopToken
-	ENV.__TOOL_SPAM_ACTIVE = true
-	
-	print("🔁 Starte Auto-Platzierung...")
-	
-	-- Setze initiale Timestamps
-	lastBeeHive = tick()
-	lastMine = tick()
-	
-	task.spawn(function()
-		while isLooping and loopToken == myToken do
-			local now = tick()
-			
-			-- BeeHive alle 60 Sekunden
-			if now - lastBeeHive >= BEEHIVE_COOLDOWN then
-				placeTool("BeeHive")
-				lastBeeHive = now
-				print("🐝 BeeHive platziert (60s Cooldown)")
-			end
-			
-			-- Subspace Mine alle 15 Sekunden
-			if now - lastMine >= MINE_COOLDOWN then
-				placeTool("Subspace Mine")
-				lastMine = now
-				print("💣 Subspace Mine platziert (15s Cooldown)")
-			end
-			
-			-- All Seeing Sentry nur wenn nicht vorhanden
-			if not sentryExists() then
-				placeTool("All Seeing Sentry")
-				print("👁️ All Seeing Sentry platziert (war zerstört)")
-				task.wait(2) -- Kurze Pause nach Platzierung
-			end
-			
-			task.wait(0.5) -- Check alle 0.5 Sekunden
-		end
-	end)
-end
-
-local function stopLooping()
-	if not isLooping then return end
-	isLooping = false
-	loopToken = loopToken + 1
-	ENV.__TOOL_SPAM_ACTIVE = false
-	print("⏹️ Auto-Platzierung gestoppt")
-	
-	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid:UnequipTools()
-	end
-end
-
--- Keybind-Funktion
-UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
-	if gameProcessedEvent then return end
-	
-	if input.KeyCode == Enum.KeyCode.F then
-		
-		-- Wenn bereits am Loopen, stoppe es
-		if isLooping then
-			stopLooping()
-			return
-		end
-		
-		local now = tick()
-		if now - lastActivation < COOLDOWN or isActivating then
-			return
-		end
-		
-		lastActivation = now
-		isActivating = true
-		
-		print("🔥 Keybind 'F' gedrückt - starte Sequenz...")
-		
-		-- Starte die Sequenz
-		task.spawn(function()
-			useAndFinishTool("BeeHive", 0.4)
-			useAndFinishTool("All Seeing Sentry", 0.4)
-			useAndFinishTool("Subspace Mine", 0.2)
-			
-			local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				humanoid:UnequipTools()
-			end
-			
-			print("✅ Sequenz beendet!")
-			isActivating = false
-			
-			-- Starte dauerhaftes Auto-Loop
-			task.wait(0.5)
-			startAutoLoop()
-		end)
-	end
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    if input.KeyCode == Enum.KeyCode.F then
+        print("🔥 F GEDRÜCKT")
+        
+        -- Erste Aktivierung
+        activateTool("BeeHive")
+        task.wait(0.4)
+        activateTool("All Seeing Sentry")
+        task.wait(0.4)
+        activateTool("Subspace Mine")
+        
+        print("✅ Initiale Aktivierung fertig")
+        print("🧠 Starte Smart Monitoring...")
+        
+        task.wait(1)
+        startMonitoring()
+    end
 end)
 
-print("══════════════════════════════")
-print("✅ Keybind 'F' Sequenz geladen!")
-print("🐝 BeeHive (60s) -> 👁️ Sentry (wenn zerstört) -> 💣 Mine (15s)")
-print("🔁 Nach Sequenz: Auto-Platzierung")
-print("⏹️  Nochmal 'F' drücken zum Stoppen")
-print("══════════════════════════════")
+print("✅ SMART 3-Tool-Spam geladen")
