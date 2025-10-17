@@ -1,12 +1,21 @@
--- Keybind 'F' mit Sequenz (NICHT ZU SCHNELL)
+-- Keybind 'T' mit Sequenz + Intelligente Auto-Platzierung
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 
-local COOLDOWN = 1.5 -- 1.5 Sekunden Cooldown
+local COOLDOWN = 1.5
 local lastActivation = 0
 local isActivating = false
+local isLooping = false
+local loopToken = 0
 
--- Diese Funktion aktiviert ein Tool, rüstet es aus und WARTET
+-- Cooldown-Zeiten
+local BEEHIVE_COOLDOWN = 60
+local MINE_COOLDOWN = 15
+
+local lastBeeHive = 0
+local lastMine = 0
+
+-- Diese Funktion aktiviert ein Tool einmalig
 local function useAndFinishTool(toolName, waitTime)
 	local tool = LocalPlayer.Backpack:FindFirstChild(toolName) or 
 	             (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolName))
@@ -16,27 +25,112 @@ local function useAndFinishTool(toolName, waitTime)
 		return
 	end
 	
-	-- Ausrüsten
 	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid:EquipTool(tool)
-		task.wait(0.1) -- Warten bis ausgerüstet
+		task.wait(0.1)
 	end
 	
-	-- Aktivieren
 	tool:Activate()
 	print("✅ Tool aktiviert:", toolName)
 	
-	-- Warten, bevor das nächste Tool dran ist
 	task.wait(waitTime)
+end
+
+-- Prüft ob All Seeing Sentry im Workspace existiert
+local function sentryExists()
+	for _, obj in ipairs(workspace:GetDescendants()) do
+		if obj.Name == "All Seeing Sentry" or 
+		   (obj:IsA("Model") and obj.Name:find("Sentry")) or
+		   (obj:IsA("BasePart") and obj.Name:find("Sentry")) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Platziert ein Tool (ohne Spam)
+local function placeTool(toolName)
+	local tool = LocalPlayer.Backpack:FindFirstChild(toolName) or 
+	             (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild(toolName))
+	
+	if not tool then return end
+	
+	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid:EquipTool(tool)
+		task.wait(0.15)
+		tool:Activate()
+		task.wait(0.1)
+		humanoid:UnequipTools()
+	end
+end
+
+-- Dauerhaftes Loop-System
+local function startAutoLoop()
+	isLooping = true
+	loopToken = loopToken + 1
+	local myToken = loopToken
+	
+	print("🔁 Starte Auto-Platzierung...")
+	
+	-- Setze initiale Timestamps
+	lastBeeHive = tick()
+	lastMine = tick()
+	
+	task.spawn(function()
+		while isLooping and loopToken == myToken do
+			local now = tick()
+			
+			-- BeeHive alle 60 Sekunden
+			if now - lastBeeHive >= BEEHIVE_COOLDOWN then
+				placeTool("BeeHive")
+				lastBeeHive = now
+				print("🐝 BeeHive platziert (60s Cooldown)")
+			end
+			
+			-- Subspace Mine alle 15 Sekunden
+			if now - lastMine >= MINE_COOLDOWN then
+				placeTool("Subspace Mine")
+				lastMine = now
+				print("💣 Subspace Mine platziert (15s Cooldown)")
+			end
+			
+			-- All Seeing Sentry nur wenn nicht vorhanden
+			if not sentryExists() then
+				placeTool("All Seeing Sentry")
+				print("👁️ All Seeing Sentry platziert (war zerstört)")
+				task.wait(2) -- Kurze Pause nach Platzierung
+			end
+			
+			task.wait(0.5) -- Check alle 0.5 Sekunden
+		end
+	end)
+end
+
+local function stopLooping()
+	if not isLooping then return end
+	isLooping = false
+	loopToken = loopToken + 1
+	print("⏹️ Auto-Platzierung gestoppt")
+	
+	local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid:UnequipTools()
+	end
 end
 
 -- Keybind-Funktion
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 	if gameProcessedEvent then return end
 	
-	-- ✅ HIER GEÄNDERT: von 'T' zu 'F'
-	if input.KeyCode == Enum.KeyCode.F then
+	if input.KeyCode == Enum.KeyCode.T then
+		
+		-- Wenn bereits am Loopen, stoppe es
+		if isLooping then
+			stopLooping()
+			return
+		end
 		
 		local now = tick()
 		if now - lastActivation < COOLDOWN or isActivating then
@@ -46,7 +140,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 		lastActivation = now
 		isActivating = true
 		
-		print("🔥 Keybind 'F' gedrückt - starte Sequenz...")
+		print("🔥 Keybind 'T' gedrückt - starte Sequenz...")
 		
 		-- Starte die Sequenz
 		task.spawn(function()
@@ -54,7 +148,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 			useAndFinishTool("All Seeing Sentry", 0.4)
 			useAndFinishTool("Subspace Mine", 0.2)
 			
-			-- Unequip am Ende
 			local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if humanoid then
 				humanoid:UnequipTools()
@@ -62,12 +155,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
 			
 			print("✅ Sequenz beendet!")
 			isActivating = false
+			
+			-- Starte dauerhaftes Auto-Loop
+			task.wait(0.5)
+			startAutoLoop()
 		end)
 	end
 end)
 
 print("══════════════════════════════")
-print("✅ Keybind 'F' Sequenz geladen!")
-print("🐝 BeeHive -> 👁️ Sentry -> 💣 Mine")
-print("⏱️  Mit Pausen dazwischen.")
+print("✅ Keybind 'T' Sequenz geladen!")
+print("🐝 BeeHive (60s) -> 👁️ Sentry (wenn zerstört) -> 💣 Mine (15s)")
+print("🔁 Nach Sequenz: Auto-Platzierung")
+print("⏹️  Nochmal 'T' drücken zum Stoppen")
 print("══════════════════════════════")
